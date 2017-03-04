@@ -15,11 +15,18 @@ int main()
         data[i] = 0xDEFECA7ED1C0FFEE;
     }
 
-    const uint64_t key = 0xDEADFACEDEADFACE;
+    // const uint64_t key = 0xDEADFACEDEADFACE;
+
+    // for (int i = 0; i < 500; ++i) {
+    //     des_encrypt(data, TOTAL_DATA, key);
+    //     des_decrypt(data, TOTAL_DATA, key);
+    // }
+
+    const uint64_t keys[3] = { 0x12345678ABCDEF00, 0xDEADFACEDEADFACE, 0xDEADBEEFDEADBEEF };
 
     for (int i = 0; i < 500; ++i) {
-        des_encrypt(data, TOTAL_DATA, key);
-        des_decrypt(data, TOTAL_DATA, key);
+        tdes_ede_encrypt(data, TOTAL_DATA, keys);
+        tdes_ede_decrypt(data, TOTAL_DATA, keys);
     }
 
     for (int i = 0; i < 5; ++i) {

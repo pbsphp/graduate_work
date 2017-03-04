@@ -10,39 +10,17 @@
 #define ENCRYPTION 1
 #define DECRYPTION 2
 
+#define STRATEGY_SIMPLE_DES 1
+#define STRATEGY_3DES_EDE 2
+
 
 // У DES 16 раундов
 #define TOTAL_ROUNDS 16
 
 
-/**
- * Возвращает index'ный бит из number, нумерация битов справа
- */
-#define GET_BIT_TAIL(number, index) ((unsigned) ((number) >> (index)) & 1)
-
-
-/**
- * Возвращает #index бит из number.
- * Нумерация битов слева. Параметр total_bits - разрядность числа.
- */
-#define GET_BIT(number, index, total_bits) \
-    (GET_BIT_TAIL((number), (total_bits) - (index) - 1))
-
-
-/**
- * Циклический сдвиг влево
- */
-#define ROTATE_LEFT(number, bits, total_bits) \
-    ( \
-        ( \
-            (number) << (bits) | (number) >> ((total_bits) - (bits)) \
-        ) & ((1 << (total_bits)) - 1) \
-    )
-
-
 // Начальная и конечная перестановки
 __device__
-static const int INITIAL_PERMUTATION[] = {
+static const int IP1[] = {
     58, 50, 42, 34, 26, 18, 10,  2,
     60, 52, 44, 36, 28, 20, 12,  4,
     62, 54, 46, 38, 30, 22, 14,  6,
@@ -55,7 +33,7 @@ static const int INITIAL_PERMUTATION[] = {
 
 
 __device__
-static const int FINAL_PERMUTATION[] = {
+static const int IP2[] = {
     40,  8, 48, 16, 56, 24, 64, 32,
     39,  7, 47, 15, 55, 23, 63, 31,
     38,  6, 46, 14, 54, 22, 62, 30,
@@ -91,7 +69,7 @@ static const int ROUND_P_BOX[] = {
 
 // S-бокс
 __device__
-static const int S_BOX[8][4][TOTAL_ROUNDS] = {
+static const uint8_t S_BOX[8][4][TOTAL_ROUNDS] = {
    {
        {14,  4, 13,  1,  2, 15, 11,  8,  3, 10,  6, 12,  5,  9,  0,  7},
        { 0, 15,  7,  4, 14,  2, 13,  1, 10,  6, 12, 11,  9,  5,  3,  8},
@@ -149,12 +127,6 @@ static const int KEY_INIT_TRANSFORMS[56] = {
 };
 
 
-// Сдвиги влево при формировании раундовых ключей
-static const int KEY_ROTATIONS[TOTAL_ROUNDS] = {
-    1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1
-};
-
-
 // Конечные преобразования раундового ключа из 56-битного в 48-битный
 static const int KEY_FINAL_TRANSFORMS[48] = {
     14, 17, 11, 24,  1,  5,
@@ -169,24 +141,62 @@ static const int KEY_FINAL_TRANSFORMS[48] = {
 
 
 /**
- * Выполняет начальную или конечную перестановку битов.
+ * Возвращает n бит из слова number.
+ * number - число,
+ * n - номер бита (слева, начиная с 0)
+ * total_bits - сколько всего бит в числе (например 48).
+ */
+__host__ __device__
+static inline unsigned get_bit(uint64_t number, int n, int total_bits)
+{
+    int n_left = total_bits - n - 1;
+    return (number >> n_left) & 1;
+}
+
+
+/**
+ * Циклически сдвигает биты числа влево.
+ * number - число,
+ * n - на сколько бит влево сдвинуть число,
+ * total_bits - количество бит в числе.
+ *
+ * Пример:
+ * number = 01110011, n = 2, total_bits = 8
+ * number = 11001101.
+ */
+static inline uint64_t rotate_left(uint64_t number, int n, int total_bits)
+{
+    uint64_t rotated = (number << n) | (number >> (total_bits - n));
+    uint64_t mask = (1 << total_bits) - 1;
+    return rotated & mask;
+}
+
+
+/**
+ * Выполняет начальную или конечную перестановку битов
+ * по соответствующим таблицам, описаным в спецификации DES.
+ * data - данные для перестановки (64 бита),
+ * initial - начальная или конечная перестановка.
  */
 __device__
 static uint64_t apply_permutation(uint64_t data, bool initial)
 {
-    const int *ip = initial ? INITIAL_PERMUTATION : FINAL_PERMUTATION;
+    const int *ip = initial ? IP1 : IP2;
 
     uint64_t result = 0;
     for (int i = 0; i < 64; ++i) {
         result <<= 1;
-        result |= GET_BIT(data, ip[i] - 1, 64);
+        result |= get_bit(data, ip[i] - 1, 64);
     }
     return result;
 }
 
 
 /**
- * Выполняет P-бокс расширение
+ * Выполняет P-бокс расширение данных с 32 до 48 бит.
+ * data - начальные данные (32 бита).
+ * Для расширения используется таблица P-box, описаная в спецификации DES.
+ * Возвращает 48-битное (расширенное) число.
  */
 __device__
 static uint64_t pbox_transform(uint64_t data)
@@ -194,14 +204,16 @@ static uint64_t pbox_transform(uint64_t data)
     uint64_t result = 0;
     for (int i = 0; i < 48; ++i) {
         result <<= 1;
-        result |= GET_BIT(data, P_BOX[i] - 1, 32);
+        result |= get_bit(data, P_BOX[i] - 1, 32);
     }
     return result;
 }
 
 
 /**
- * Выполняет P-бокс преобразование в раундовой функции des
+ * Выполняет P-бокс преобразование в раундовой функции des.
+ * Для преобразования данных использует прямо P-box раунда,
+ * описаный в спецификации DES.
  */
 __device__
 static uint64_t round_pbox_transform(uint64_t data)
@@ -209,19 +221,24 @@ static uint64_t round_pbox_transform(uint64_t data)
     uint64_t result = 0;
     for (int i = 0; i < 32; ++i) {
         result <<= 1;
-        result |= GET_BIT(data, ROUND_P_BOX[i] - 1, 32);
+        result |= get_bit(data, ROUND_P_BOX[i] - 1, 32);
     }
     return result;
 }
 
 
 /**
- * Выполняет S-бокс преобразование
+ * Выполняет S-бокс преобразование.
+ * data - данные для преобразования (6-битное число),
+ * vec_num - номер вектора преобразования (0-7, по количеству S-боксов).
+ * Перестановка выполняется следующим образом:
+ * 1 и 6 биты входного числа - номер строки, 2-5 - номер столбца.
+ * По номеру строки и столбца в S-боксе ищется конечное число.
+ * S-box задан в спецификации DES.
  */
 __device__
-static uint64_t sbox_transform(uint64_t data, int vec_num)
+static uint64_t sbox_transform(uint8_t data, int vec_num)
 {
-    // 1 и 6 биты - номер строки, 2, 3, 4, 5 - столбца.
     int row = ((data >> 4) & 2) | (data & 1);
     int col = (data >> 1) & 0xF;
     return S_BOX[vec_num][row][col];
@@ -229,38 +246,79 @@ static uint64_t sbox_transform(uint64_t data, int vec_num)
 
 
 /**
- * Функция DES - шифрует 32 бита информации внутри раунда
+ * Функция Фейстеля - шифрует 32 бита информации внутри раунда.
+ * Данная функция вызывается в каждом раунде Фейстеля.
+ * data - данные для шифрования,
+ * subkey - подключ для данного раунда.
+ *
+ * Функция выполняет следующие этапы:
+ * - Начальные 32-битные данные расширяются до 64-битных.
+ * - Выполняется XOR с ключом.
+ * - 48-битные данные делятся на 8 векторов, по 6 бит каждый.
+ * - Над каждым вектором выполняется S-box преобразование,
+ *   после чего получается 8 4-битных векторов.
+ * - 8 4-битных векторов склеиваются в 32-битный.
+ * - Выполняется прямое P-box преобразование.
  */
 __device__
-static uint64_t des_round_fn(uint64_t data, uint64_t subkey)
+static uint64_t feistel_function(uint64_t data, uint64_t subkey)
 {
-    // Расширяем блок с 32 до 48 бит
+    const int SIX_BITS = 0x3F;
+
     uint64_t result = pbox_transform(data);
 
-    // XOR с ключом
     result ^= subkey;
 
-    // Делим 48-битное число на 8 векторов по 6 бит каждый
-    uint64_t vectors[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t vectors[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     for (int i = 7; i >= 0; --i) {
-        vectors[i] = result & 0x3F;
+        vectors[i] = result & SIX_BITS;
         result >>= 6;
     }
 
-    // Выполняем S-бокс преобразования
     for (int i = 0; i < 8; ++i) {
         vectors[i] = sbox_transform(vectors[i], i);
     }
 
-    // После S-бокс преобразования получаем 8 4-битных векторов,
-    // которые объединяются в один 32-битный.
     result = 0;
     for (int i = 0; i < 8; ++i) {
         result <<= 4;
         result |= vectors[i];
     }
+
     result = round_pbox_transform(result);
+
     return result;
+}
+
+
+/**
+ * Генерирует очередной ключ раунда Фейстеля.
+ * Получает 28-битные векторы C0 и D0.
+ * - Вектора сдвигаются на 1-2 бита влево (зависит от раунда).
+ * - Склеиваются в один 56-битный вектор.
+ * - Выполняется сжатие ключа до 48-битного вектора (по таблице
+ *   преобразований, описанной в спецификации DES).
+ */
+static uint64_t gen_round_key(uint64_t *C0, uint64_t *D0, int round_num)
+{
+    // Сдвиги влево при формировании раундовых ключей
+    static const int KEY_ROTATIONS[TOTAL_ROUNDS] = {
+        1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1
+    };
+
+    int round_shift = KEY_ROTATIONS[round_num];
+
+    *C0 = rotate_left(*C0, round_shift, 28);
+    *D0 = rotate_left(*D0, round_shift, 28);
+    uint64_t round_key_56 = *C0 << 28 | *D0;
+
+    // P-бокс перестановка (сжатие) ключа
+    uint64_t round_key_48 = 0;
+    for (int j = 0; j < 48; ++j) {
+        round_key_48 <<= 1;
+        round_key_48 |= get_bit(round_key_56, KEY_FINAL_TRANSFORMS[j] - 1, 56);
+    }
+    return round_key_48;
 }
 
 
@@ -269,15 +327,20 @@ static uint64_t des_round_fn(uint64_t data, uint64_t subkey)
  *
  * Генерация ключей выполняется CPU, т.к. сравнительно простая и
  * плохо параллелится.
+ *
+ * Выполняется следующим образом:
+ * - 64-битный ключ трансформируется в 56-битный, удаляются биты
+ *   коррекции.
+ * - 56-битный ключ делится на два 28-битных вектора - C0 и D0.
+ * - Формируются раундовые ключи.
  */
-static void make_rounds_keys(uint64_t init_key, uint64_t *result_arr,
-                             int encr_or_decr)
+static void make_rounds_keys(uint64_t init_key, uint64_t *result_arr)
 {
     // Трансформируем 64-битный ключ в 56-битный
     uint64_t key = 0;
     for (int i = 0; i < 56; ++i) {
         key <<= 1;
-        key |= GET_BIT(init_key, KEY_INIT_TRANSFORMS[i] - 1, 64);
+        key |= get_bit(init_key, KEY_INIT_TRANSFORMS[i] - 1, 64);
     }
 
     // Делим ключ на C0 (старшие разряды) и D0 (младшие), по 28 бит каждый
@@ -286,66 +349,113 @@ static void make_rounds_keys(uint64_t init_key, uint64_t *result_arr,
 
     // Формируем раундовые ключи сдвигами влево на 1-2 бита.
     for (int i = 0; i < TOTAL_ROUNDS; ++i) {
-        C0 = ROTATE_LEFT(C0, KEY_ROTATIONS[i], 28);
-        D0 = ROTATE_LEFT(D0, KEY_ROTATIONS[i], 28);
-        uint64_t round_key_56 = C0 << 28 | D0;
-
-        // P-бокс перестановка (сжатие) ключа
-        uint64_t round_key_48 = 0;
-        for (int j = 0; j < 48; ++j) {
-            round_key_48 <<= 1;
-            round_key_48 |= GET_BIT(round_key_56, KEY_FINAL_TRANSFORMS[j] - 1, 56);
-        }
-
-        // При расшифровке ключи раундов в обратном порядке
-        if (encr_or_decr == ENCRYPTION) {
-            result_arr[i] = round_key_48;
-        } else {
-            result_arr[TOTAL_ROUNDS - i - 1] = round_key_48;
-        }
+        result_arr[i] = gen_round_key(&C0, &D0, i);
     }
 }
 
 
 /**
- * Выполняет шифрование одного блока
- * data - массив всех данных для шифрования,
- * len - длина массива для шифрования (количество блоков)
- * round_keys - массив раундовых ключей
+ * Выполняет шифрование 64-битного блока данных.
+ * 1. Выполняется начальная перестановка данных.
+ * 2. Выполняются раунды Фейстеля.
+ * 3. Выполняется финальная перестановка данных.
+ */
+__device__
+static uint64_t des_process_block(uint64_t block, uint64_t *round_keys,
+                                  int encr_or_decr)
+{
+    uint64_t cipher = apply_permutation(block, true);
+
+    uint64_t L = cipher >> 32 & 0xFFFFFFFF;
+    uint64_t R = cipher >>  0 & 0xFFFFFFFF;
+
+    for (int round_num = 0; round_num < TOTAL_ROUNDS; ++round_num) {
+        uint64_t key;
+        if (encr_or_decr == ENCRYPTION) {
+            key = round_keys[round_num];
+        } else {
+            key = round_keys[TOTAL_ROUNDS - round_num - 1];
+        }
+
+        uint64_t nextR = L ^ feistel_function(R, key);
+        L = R;
+        R = nextR;
+    }
+
+    // После последнего раунда R и L не переставляются
+    cipher = R << 32 | L;
+
+    cipher = apply_permutation(cipher, false);
+
+    return cipher;
+}
+
+
+/**
+ * Выполняет шифрование или расшифровку массива данных.
+ * all_data - весь массив данных,
+ * len - количество блоков,
+ * round_keys - раундовые ключи,
+ * encr_or_decr - шифрование или расшифрование.
  */
 __global__
-static void encrypt_with_round_keys(uint64_t *data, size_t len,
-                                    uint64_t *round_keys)
+static void map_des(uint64_t *all_data, int len, uint64_t *round_keys,
+                    int encr_or_decr)
 {
     int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
     if (idx < len) {
-        // Начальная перестановка
-        uint64_t cipher = apply_permutation(data[idx], true);
+        all_data[idx] = des_process_block(
+            all_data[idx], round_keys, encr_or_decr);
+    }
+}
 
-        uint64_t L = cipher >> 32 & 0xFFFFFFFF;
-        uint64_t R = cipher >>  0 & 0xFFFFFFFF;
 
-        // Раунды преобразования Фейстеля
-        for (int round_num = 0; round_num < TOTAL_ROUNDS; ++round_num) {
-            uint64_t key = round_keys[round_num];
-            uint64_t nextR = L ^ des_round_fn(R, key);
-            L = R;
-            R = nextR;
+/**
+ * Выполняет шифрование или расшифровку массива данных.
+ * 3-DES EDE.
+ * all_data - весь массив данных,
+ * len - количество блоков,
+ * round_keys - раундовые ключи,
+ * encr_or_decr - шифрование или расшифрование.
+ */
+__global__
+static void map_3des_ede(uint64_t *all_data, int len, uint64_t *round_keys,
+                         int encr_or_decr)
+{
+    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+    if (idx < len) {
+        uint64_t block = all_data[idx];
+        if (encr_or_decr == ENCRYPTION) {
+            block = des_process_block(
+                block, &round_keys[0], ENCRYPTION);
+            block = des_process_block(
+                block, &round_keys[TOTAL_ROUNDS], DECRYPTION);
+            block = des_process_block(
+                block, &round_keys[2 * TOTAL_ROUNDS], ENCRYPTION);
+        } else if (encr_or_decr == DECRYPTION) {
+            block = des_process_block(
+                block, &round_keys[0], DECRYPTION);
+            block = des_process_block(
+                block, &round_keys[TOTAL_ROUNDS], ENCRYPTION);
+            block = des_process_block(
+                block, &round_keys[2 * TOTAL_ROUNDS], DECRYPTION);
         }
-
-        // После последнего раунда R и L не переставляются
-        cipher = R << 32 | L;
-        cipher = apply_permutation(cipher, false);
-        data[idx] = cipher;
+        all_data[idx] = block;
     }
 }
 
 
 /**
  * Запускает процесс шифрования на GPU.
- * Инициализирует память и т.п.
+ * Инициализирует и очищает память, передает управление GPU и т.д.
+ * data - массив данных (на хосте) для шифрования/расшифровки,
+ * len - количество блоков для шифрования,
+ * round_keys - раундовые ключи (на хосте),
+ * encr_or_decr - шифрование или расшифровка,
+ * strategy - алгоритм шифрования: DES, 3DES(EDE)...
  */
-static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys)
+static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
+                           int encr_or_decr, int strategy)
 {
     // TODO: проверять успешность выделения памяти
 
@@ -361,19 +471,26 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys)
     // Аллоцируем память для ключей раундов
     uint64_t *round_keys_dev = NULL;
     // TODO: Выделять константную память!
-    cudaMalloc((void **) &round_keys_dev, TOTAL_ROUNDS * sizeof(uint64_t));
+    cudaMalloc((void **) &round_keys_dev, 3 * TOTAL_ROUNDS * sizeof(uint64_t));
     cudaMemcpy(
         round_keys_dev, round_keys,
-        TOTAL_ROUNDS * sizeof(uint64_t),
+        3 * TOTAL_ROUNDS * sizeof(uint64_t),
         cudaMemcpyHostToDevice
     );
 
     // Запускаем обработку на девайсе
     uint64_t run_threads = min((int) len, THREADS_PER_BLOCK);
     uint64_t run_blocks = (len + run_threads - 1) / len;
-    encrypt_with_round_keys<<<run_blocks, run_threads>>>(
-        data_dev, len, round_keys_dev
-    );
+
+    if (strategy == STRATEGY_SIMPLE_DES) {
+        map_des<<<run_blocks, run_threads>>>(
+            data_dev, len, round_keys_dev, encr_or_decr
+        );
+    } else if (strategy == STRATEGY_3DES_EDE) {
+        map_3des_ede<<<run_blocks, run_threads>>>(
+            data_dev, len, round_keys_dev, encr_or_decr
+        );
+    }
 
     // Копируем данные с девайса на хост и освобождаем память
     cudaMemcpy(
@@ -387,30 +504,65 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys)
 
 
 /**
- * Выполняет шифрование блока данных.
+ * Выполняет шифрование блока данных по алгоритму DES.
  * data - массив 64-битных блоков данных,
  * len - длина массива (количество блоков),
  * key - 64-битный ключ.
  */
 void des_encrypt(uint64_t *data, size_t len, uint64_t key)
 {
-    uint64_t round_keys[TOTAL_ROUNDS] = {0};
-    make_rounds_keys(key, round_keys, ENCRYPTION);
-
-    des_run_device(data, len, round_keys);
+    uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
+    make_rounds_keys(key, round_keys);
+    des_run_device(data, len, round_keys,
+                   ENCRYPTION, STRATEGY_SIMPLE_DES);
 }
 
 
 /**
- * Выполняет расшифровку блока данных.
+ * Выполняет расшифровку блока данных по алгоритму DES.
  * data - массив 64-битных блоков шифротекста,
  * len - длина массива (количество блоков),
  * key - 64-битный ключ,
  */
 void des_decrypt(uint64_t *data, size_t len, uint64_t key)
 {
-    uint64_t reversed_round_keys[TOTAL_ROUNDS] = {0};
-    make_rounds_keys(key, reversed_round_keys, DECRYPTION);
+    uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
+    make_rounds_keys(key, round_keys);
+    des_run_device(data, len, round_keys,
+                   DECRYPTION, STRATEGY_SIMPLE_DES);
+}
 
-    des_run_device(data, len, reversed_round_keys);
+
+/**
+ * Выполняет расшифровку блока данных по алгоритму 3DES(EDE).
+ * data - массив 64-битных блоков шифротекста,
+ * len - длина массива (количество блоков),
+ * keys - 3 64-битнх ключа,
+ */
+void tdes_ede_encrypt(uint64_t *data, size_t len, const uint64_t *keys)
+{
+    uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
+
+    for (int i = 0; i < 3; ++i) {
+        make_rounds_keys(keys[i], &round_keys[i * TOTAL_ROUNDS]);
+    }
+    des_run_device(data, len, round_keys,
+                   ENCRYPTION, STRATEGY_3DES_EDE);
+}
+
+
+/**
+ * Выполняет расшифровку блока данных по алгоритму 3DES(EDE).
+ * data - массив 64-битных блоков шифротекста,
+ * len - длина массива (количество блоков),
+ * keys - 3 64-битнх ключа,
+ */
+void tdes_ede_decrypt(uint64_t *data, size_t len, const uint64_t *keys)
+{
+    uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
+    for (int i = 0; i < 3; ++i) {
+        make_rounds_keys(keys[3 - i - 1], &round_keys[i * TOTAL_ROUNDS]);
+    }
+    des_run_device(data, len, round_keys,
+                   DECRYPTION, STRATEGY_3DES_EDE);
 }
