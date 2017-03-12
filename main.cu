@@ -4,6 +4,7 @@
 
 #include "des.h"
 #include "aes.h"
+#include "blowfish.h"
 
 
 const int TOTAL_DATA = 1005000;
@@ -34,8 +35,6 @@ void des_demo()
     for (int i = 0; i < 5; ++i) {
         printf("%lx\n", data[i]);
     }
-
-    printf("%d\n", cudaGetLastError());
 
     free(data);
 }
@@ -78,8 +77,25 @@ void aes_demo()
         }
         printf("\n");
     }
+}
 
-    printf("%d\n", cudaGetLastError());
+
+void blowfish_demo()
+{
+    const uint8_t user_key[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xAB, 0xCD, 0xEF, 0x11};
+
+    uint64_t *data = (uint64_t *) malloc(sizeof(uint64_t) * TOTAL_DATA);
+    for (int i = 0; i < TOTAL_DATA; ++i) {
+        data[i] = 0xDEFECA7ED000BEEF;
+    }
+
+    blowfish_encrypt(data, TOTAL_DATA, user_key, 8);
+    printf("%lx\n", data[0]);
+
+    blowfish_decrypt(data, TOTAL_DATA, user_key, 8);
+    printf("%lx\n", data[0]);
+
+    free(data);
 }
 
 
@@ -87,5 +103,9 @@ int main()
 {
     des_demo();
     aes_demo();
+    blowfish_demo();
+
+    printf("%d\n", cudaGetLastError());
+
     return 0;
 }
