@@ -457,16 +457,8 @@ static void map_3des_ede(uint64_t *all_data, int len, uint64_t *round_keys,
 static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
                            int encr_or_decr, int strategy)
 {
-    // TODO: проверять успешность выделения памяти
-
-    // Аллоцируем память для самих даных.
     uint64_t *data_dev = NULL;
-    cudaMalloc((void **) &data_dev, len * sizeof(uint64_t));
-    cudaMemcpy(
-        data_dev, data,
-        len * sizeof(uint64_t),
-        cudaMemcpyHostToDevice
-    );
+    cudaHostGetDevicePointer(&data_dev, data, 0);
 
     // Аллоцируем память для ключей раундов
     uint64_t *round_keys_dev = NULL;
@@ -492,14 +484,8 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
         );
     }
 
-    // Копируем данные с девайса на хост и освобождаем память
-    cudaMemcpy(
-        data, data_dev,
-        len * sizeof(uint64_t),
-        cudaMemcpyDeviceToHost
-    );
     cudaFree(round_keys_dev);
-    cudaFree(data_dev);
+    cudaThreadSynchronize();
 }
 
 

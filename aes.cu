@@ -445,15 +445,8 @@ static void aes_run_device(
     uint8_t round_keys[TOTAL_ROUNDS + 1][STATE_SIZE][STATE_SIZE],
     int encr_or_decr)
 {
-    // TODO: Проверять успешность выделения памяти и т.п.
-
     uint8_t *data_dev = NULL;
-    cudaMalloc((void **) &data_dev, len * STATE_SIZE * STATE_SIZE);
-    cudaMemcpy(
-        data_dev, data,
-        len * STATE_SIZE * STATE_SIZE,
-        cudaMemcpyHostToDevice
-    );
+    cudaHostGetDevicePointer(&data_dev, data, 0);
 
     uint8_t ***round_keys_dev = NULL;
     cudaMalloc((void **) &round_keys_dev, sizeof(round_keys_dev));
@@ -471,14 +464,8 @@ static void aes_run_device(
         data_dev, len, (uint8_t (*)[4][4]) round_keys_dev, encr_or_decr
     );
 
-    // Копируем данные с девайса на хост и освобождаем память
-    cudaMemcpy(
-        data, data_dev,
-        len * STATE_SIZE * STATE_SIZE,
-        cudaMemcpyDeviceToHost
-    );
     cudaFree(round_keys_dev);
-    cudaFree(data_dev);
+    cudaThreadSynchronize();
 }
 
 

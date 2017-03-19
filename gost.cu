@@ -140,12 +140,8 @@ static void map_gost(uint64_t *data, int len, const uint32_t *key,
 static void gost_run_device(uint64_t *data, int len, const uint32_t *key,
                             int encr_or_decr)
 {
-    uint64_t *data_dev;
-    cudaMalloc((void **) &data_dev, len * sizeof(uint64_t));
-    cudaMemcpy(
-        data_dev, data, len * sizeof(uint64_t),
-        cudaMemcpyHostToDevice
-    );
+    uint64_t *data_dev = NULL;
+    cudaHostGetDevicePointer(&data_dev, data, 0);
 
     uint64_t *key_dev;
     cudaMalloc((void **) &key_dev, sizeof(uint32_t) * 8);
@@ -161,13 +157,8 @@ static void gost_run_device(uint64_t *data, int len, const uint32_t *key,
         data_dev, len, (const uint32_t *) key_dev, encr_or_decr
     );
 
-    cudaMemcpy(
-        data, data_dev, len * sizeof(uint64_t),
-        cudaMemcpyDeviceToHost
-    );
-
-    cudaFree(data_dev);
     cudaFree(key_dev);
+    cudaThreadSynchronize();
 }
 
 

@@ -335,12 +335,7 @@ static void blowfish_run_device(
 {
     // Аллоцируем память для самих даных.
     uint64_t *data_dev = NULL;
-    cudaMalloc((void **) &data_dev, len * sizeof(uint64_t));
-    cudaMemcpy(
-        data_dev, data,
-        len * sizeof(uint64_t),
-        cudaMemcpyHostToDevice
-    );
+    cudaHostGetDevicePointer(&data_dev, data, 0);
 
     // Аллоцируем память для ключа
     struct blowfish_key *key_dev = NULL;
@@ -360,14 +355,8 @@ static void blowfish_run_device(
         data_dev, len, key_dev, encr_or_decr
     );
 
-    // Копируем данные с девайса на хост и освобождаем память
-    cudaMemcpy(
-        data, data_dev,
-        len * sizeof(uint64_t),
-        cudaMemcpyDeviceToHost
-    );
     cudaFree(key_dev);
-    cudaFree(data_dev);
+    cudaThreadSynchronize();
 }
 
 
