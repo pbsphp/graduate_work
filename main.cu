@@ -5,6 +5,7 @@
 #include "des.h"
 #include "aes.h"
 #include "blowfish.h"
+#include "gost.h"
 
 
 const int TOTAL_DATA = 1005000;
@@ -99,11 +100,33 @@ void blowfish_demo()
 }
 
 
+void gost_demo()
+{
+    const uint32_t key[8] = {
+        0xDEADBEEF, 0xDEADC0FE, 0xDEFECA7E, 0xABCD1234,
+        0xAABBCCDD, 0x01742319, 0xDADADEDE, 0xCACE1000
+    };
+    uint64_t *data = (uint64_t *) malloc(sizeof(uint64_t) * TOTAL_DATA);
+    for (int i = 0; i < TOTAL_DATA; ++i) {
+        data[i] = 0xDEFECA7ED000BEEF;
+    }
+
+    gost_encrypt(data, TOTAL_DATA, key);
+    printf("%lx\n", data[0]);
+
+    gost_decrypt(data, TOTAL_DATA, key);
+    printf("%lx\n", data[0]);
+
+    free(data);
+}
+
+
 int main()
 {
     des_demo();
     aes_demo();
     blowfish_demo();
+    gost_demo();
 
     printf("%d\n", cudaGetLastError());
 
