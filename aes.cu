@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "config.h"
+
 
 #define STATE_SIZE 4
 #define TOTAL_ROUNDS 10
@@ -12,10 +14,6 @@
 
 #define ENCRYPTION 1
 #define DECRYPTION 2
-
-#define THREADS_PER_BLOCK 500
-#define BLOCKS_PER_ITERATION 1000
-#define DATA_PER_ITERATION (THREADS_PER_BLOCK * BLOCKS_PER_ITERATION)
 
 
 // Таблицы трансформации для SubBytes, прямая и обратная.
@@ -383,29 +381,33 @@ __global__
 static void map_aes(
     uint8_t *all_data, int len,
     uint8_t round_keys[TOTAL_ROUNDS + 1][STATE_SIZE][STATE_SIZE],
-    int encr_or_decr)
+    int encr_or_decr, int device_loops)
 {
-    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
-    if (idx < len) {
-        int bytes_offset = idx * STATE_SIZE * STATE_SIZE;
+    for (int iteration = 0; iteration < device_loops; ++iteration) {
+        int worker_idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+        int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * iteration;
+        int idx = offset + worker_idx;
+        if (idx < len) {
+            int bytes_offset = idx * STATE_SIZE * STATE_SIZE;
 
-        // TODO: не копировать данные, попробовать привести к массиву.
-        uint8_t state[STATE_SIZE][STATE_SIZE] = {0};
-        for (int i = 0; i < STATE_SIZE; ++i) {
-            for (int j = 0; j < STATE_SIZE; ++j) {
-                state[i][j] = all_data[bytes_offset + i * STATE_SIZE + j];
+            // TODO: не копировать данные, попробовать привести к массиву.
+            uint8_t state[STATE_SIZE][STATE_SIZE] = {0};
+            for (int i = 0; i < STATE_SIZE; ++i) {
+                for (int j = 0; j < STATE_SIZE; ++j) {
+                    state[i][j] = all_data[bytes_offset + i * STATE_SIZE + j];
+                }
             }
-        }
 
-        if (encr_or_decr == ENCRYPTION) {
-            aes_encrypt_block(state, round_keys);
-        } else if (encr_or_decr == DECRYPTION) {
-            aes_decrypt_block(state, round_keys);
-        }
+            if (encr_or_decr == ENCRYPTION) {
+                aes_encrypt_block(state, round_keys);
+            } else if (encr_or_decr == DECRYPTION) {
+                aes_decrypt_block(state, round_keys);
+            }
 
-        for (int i = 0; i < STATE_SIZE; ++i) {
-            for (int j = 0; j < STATE_SIZE; ++j) {
-                all_data[bytes_offset + i * STATE_SIZE + j] = state[i][j];
+            for (int i = 0; i < STATE_SIZE; ++i) {
+                for (int j = 0; j < STATE_SIZE; ++j) {
+                    all_data[bytes_offset + i * STATE_SIZE + j] = state[i][j];
+                }
             }
         }
     }
@@ -437,11 +439,12 @@ static void aes_run_device(
     );
 
     // Запускаем обработку на девайсе
-    int run_threads = min((int) len, THREADS_PER_BLOCK);
-    int run_blocks = (len + run_threads - 1) / len;
+    int grid_size = THREADS_PER_BLOCK * BLOCKS_PER_GRID;
+    int device_loops = (len + grid_size - 1) / grid_size;
 
-    map_aes<<<run_blocks, run_threads>>>(
-        data_dev, len, (uint8_t (*)[4][4]) round_keys_dev, encr_or_decr
+    map_aes<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
+        data_dev, len, (uint8_t (*)[4][4]) round_keys_dev, encr_or_decr,
+        device_loops
     );
 
     cudaFree(round_keys_dev);

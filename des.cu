@@ -1,10 +1,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
-#define THREADS_PER_BLOCK 500
-#define BLOCKS_PER_ITERATION 1000
-#define DATA_PER_ITERATION (THREADS_PER_BLOCK * BLOCKS_PER_ITERATION)
+#include "config.h"
 
 
 #define ENCRYPTION 1
@@ -400,12 +397,15 @@ static uint64_t des_process_block(uint64_t block, uint64_t *round_keys,
  */
 __global__
 static void map_des(uint64_t *all_data, int len, uint64_t *round_keys,
-                    int encr_or_decr)
+                    int encr_or_decr, int device_loops)
 {
-    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
-    if (idx < len) {
-        all_data[idx] = des_process_block(
-            all_data[idx], round_keys, encr_or_decr);
+    for (int iteration = 0; iteration < device_loops; ++iteration) {
+        int worker_idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+        int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * iteration;
+        int idx = offset + worker_idx;
+        if (idx < len) {
+            all_data[idx] = des_process_block(all_data[idx], round_keys, encr_or_decr);
+        }
     }
 }
 
@@ -420,27 +420,31 @@ static void map_des(uint64_t *all_data, int len, uint64_t *round_keys,
  */
 __global__
 static void map_3des_ede(uint64_t *all_data, int len, uint64_t *round_keys,
-                         int encr_or_decr)
+                         int encr_or_decr, int device_loops)
 {
-    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
-    if (idx < len) {
-        uint64_t block = all_data[idx];
-        if (encr_or_decr == ENCRYPTION) {
-            block = des_process_block(
-                block, &round_keys[0], ENCRYPTION);
-            block = des_process_block(
-                block, &round_keys[TOTAL_ROUNDS], DECRYPTION);
-            block = des_process_block(
-                block, &round_keys[2 * TOTAL_ROUNDS], ENCRYPTION);
-        } else if (encr_or_decr == DECRYPTION) {
-            block = des_process_block(
-                block, &round_keys[0], DECRYPTION);
-            block = des_process_block(
-                block, &round_keys[TOTAL_ROUNDS], ENCRYPTION);
-            block = des_process_block(
-                block, &round_keys[2 * TOTAL_ROUNDS], DECRYPTION);
+    for (int iteration = 0; iteration < device_loops; ++iteration) {
+        int worker_idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+        int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * iteration;
+        int idx = offset + worker_idx;
+        if (idx < len) {
+            uint64_t block = all_data[idx];
+            if (encr_or_decr == ENCRYPTION) {
+                block = des_process_block(
+                    block, &round_keys[0], ENCRYPTION);
+                block = des_process_block(
+                    block, &round_keys[TOTAL_ROUNDS], DECRYPTION);
+                block = des_process_block(
+                    block, &round_keys[2 * TOTAL_ROUNDS], ENCRYPTION);
+            } else if (encr_or_decr == DECRYPTION) {
+                block = des_process_block(
+                    block, &round_keys[0], DECRYPTION);
+                block = des_process_block(
+                    block, &round_keys[TOTAL_ROUNDS], ENCRYPTION);
+                block = des_process_block(
+                    block, &round_keys[2 * TOTAL_ROUNDS], DECRYPTION);
+            }
+            all_data[idx] = block;
         }
-        all_data[idx] = block;
     }
 }
 
@@ -471,16 +475,16 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
     );
 
     // Запускаем обработку на девайсе
-    uint64_t run_threads = min((int) len, THREADS_PER_BLOCK);
-    uint64_t run_blocks = (len + run_threads - 1) / len;
+    int grid_size = THREADS_PER_BLOCK * BLOCKS_PER_GRID;
+    int device_loops = (len + grid_size - 1) / grid_size;
 
     if (strategy == STRATEGY_SIMPLE_DES) {
-        map_des<<<run_blocks, run_threads>>>(
-            data_dev, len, round_keys_dev, encr_or_decr
+        map_des<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
+            data_dev, len, round_keys_dev, encr_or_decr, device_loops
         );
     } else if (strategy == STRATEGY_3DES_EDE) {
-        map_3des_ede<<<run_blocks, run_threads>>>(
-            data_dev, len, round_keys_dev, encr_or_decr
+        map_3des_ede<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
+            data_dev, len, round_keys_dev, encr_or_decr, device_loops
         );
     }
 

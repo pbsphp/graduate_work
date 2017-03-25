@@ -1,14 +1,11 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "config.h"
+
 
 #define ENCRYPTION 1
 #define DECRYPTION 2
-
-
-#define THREADS_PER_BLOCK 500
-#define BLOCKS_PER_ITERATION 1000
-#define DATA_PER_ITERATION (THREADS_PER_BLOCK * BLOCKS_PER_ITERATION)
 
 
 /**
@@ -307,15 +304,20 @@ static void key_schedule(
  * encr_or_decr - шифрование или дешифрование.
  */
 __global__
-static void map_blowfish(uint64_t *data, int len,
-                         struct blowfish_key *key, int encr_or_decr)
+static void map_blowfish(
+    uint64_t *data, int len, struct blowfish_key *key,
+    int encr_or_decr, int device_loops)
 {
-    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
-    if (idx < len) {
-        if (encr_or_decr == ENCRYPTION) {
-            data[idx] = blowfish_encrypt_block(data[idx], key);
-        } else if (encr_or_decr == DECRYPTION) {
-            data[idx] = blowfish_decrypt_block(data[idx], key);
+    for (int i = 0; i < device_loops; ++i) {
+        int worker_idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+        int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * i;
+        int idx = offset + worker_idx;
+        if (idx < len) {
+            if (encr_or_decr == ENCRYPTION) {
+                data[idx] = blowfish_encrypt_block(data[idx], key);
+            } else if (encr_or_decr == DECRYPTION) {
+                data[idx] = blowfish_decrypt_block(data[idx], key);
+            }
         }
     }
 }
@@ -347,11 +349,11 @@ static void blowfish_run_device(
     );
 
     // Запускаем обработку на девайсе
-    int run_threads = min((int) len, THREADS_PER_BLOCK);
-    int run_blocks = (len + run_threads - 1) / len;
+    int grid_size = THREADS_PER_BLOCK * BLOCKS_PER_GRID;
+    int device_loops = (len + grid_size - 1) / grid_size;
 
-    map_blowfish<<<run_blocks, run_threads>>>(
-        data_dev, len, key_dev, encr_or_decr
+    map_blowfish<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
+        data_dev, len, key_dev, encr_or_decr, device_loops
     );
 
     cudaFree(key_dev);

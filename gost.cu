@@ -1,12 +1,10 @@
 #include <stdint.h>
 
+#include "config.h"
+
 
 #define ENCRYPTION 1
 #define DECRYPTION 2
-
-#define THREADS_PER_BLOCK 500
-#define BLOCKS_PER_ITERATION 1000
-#define DATA_PER_ITERATION (THREADS_PER_BLOCK * BLOCKS_PER_ITERATION)
 
 
 /**
@@ -125,11 +123,15 @@ static uint64_t process_block(uint64_t block, const uint32_t *keys,
  */
 __global__
 static void map_gost(uint64_t *data, int len, const uint32_t *key,
-                     int encr_or_decr)
+                     int encr_or_decr, int device_loops)
 {
-    int idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
-    if (idx < len) {
-        data[idx] = process_block(data[idx], key, encr_or_decr);
+    for (int i = 0; i < device_loops; ++i) {
+        int worker_idx = blockIdx.x * THREADS_PER_BLOCK + threadIdx.x;
+        int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * i;
+        int idx = offset + worker_idx;
+        if (idx < len) {
+            data[idx] = process_block(data[idx], key, encr_or_decr);
+        }
     }
 }
 
@@ -151,10 +153,11 @@ static void gost_run_device(uint64_t *data, int len, const uint32_t *key,
     );
 
     // Запускаем обработку на девайсе
-    int run_threads = min((int) len, THREADS_PER_BLOCK);
-    int run_blocks = (len + run_threads - 1) / len;
-    map_gost<<<run_blocks, run_threads>>>(
-        data_dev, len, (const uint32_t *) key_dev, encr_or_decr
+    int grid_size = THREADS_PER_BLOCK * BLOCKS_PER_GRID;
+    int device_loops = (len + grid_size - 1) / grid_size;
+
+    map_gost<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
+        data_dev, len, (const uint32_t *) key_dev, encr_or_decr, device_loops
     );
 
     cudaFree(key_dev);
