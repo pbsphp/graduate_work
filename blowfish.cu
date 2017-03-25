@@ -177,7 +177,6 @@ static inline void swap(uint32_t *a, uint32_t *b)
 }
 
 
-
 /**
  * Раундовая функция blowfish в сети Фейстеля
  */
