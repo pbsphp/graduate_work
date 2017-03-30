@@ -423,7 +423,7 @@ static void map_aes(
  * Запускает процесс вычисления, аллоцирует и освобождает память и т.д.
  */
 static void aes_run_device(
-    uint8_t *data, int len,
+    uint8_t *data, size_t len,
     uint8_t round_keys[TOTAL_ROUNDS + 1][STATE_SIZE][STATE_SIZE],
     int encr_or_decr)
 {
@@ -458,11 +458,11 @@ static void aes_run_device(
  * len - количество блоков (4x4 байта),
  * key - ключ (128-бит, 16-байтный массив).
  */
-void aes_encrypt(uint8_t *data, int len, const uint8_t *key)
+void aes_encrypt(void *data, size_t len, const void *key)
 {
     uint8_t round_keys[TOTAL_ROUNDS + 1][STATE_SIZE][STATE_SIZE];
-    gen_round_keys(key, round_keys);
-    aes_run_device(data, len, round_keys, ENCRYPTION);
+    gen_round_keys((const uint8_t *) key, round_keys);
+    aes_run_device((uint8_t *) data, len, round_keys, ENCRYPTION);
 }
 
 
@@ -472,9 +472,9 @@ void aes_encrypt(uint8_t *data, int len, const uint8_t *key)
  * len - количество блоков (4x4 байта),
  * key - ключ (128-бит, 16-байтный массив).
  */
-void aes_decrypt(uint8_t *cipher, int len, const uint8_t *key)
+void aes_decrypt(void *cipher, size_t len, const void *key)
 {
     uint8_t round_keys[TOTAL_ROUNDS + 1][STATE_SIZE][STATE_SIZE];
-    gen_round_keys(key, round_keys);
-    aes_run_device(cipher, len, round_keys, DECRYPTION);
+    gen_round_keys((const uint8_t *) key, round_keys);
+    aes_run_device((uint8_t *) cipher, len, round_keys, DECRYPTION);
 }

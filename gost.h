@@ -10,7 +10,7 @@
  * len - количество 64-битных блоков,
  * key - 256-битный ключ (массив 32-битных частей).
  */
-void gost_encrypt(uint64_t *data, int len, const uint32_t *key);
+void gost_encrypt(void *data, size_t len, const void *key);
 
 
 /**
@@ -19,6 +19,6 @@ void gost_encrypt(uint64_t *data, int len, const uint32_t *key);
  * len - количество 64-битных блоков,
  * key - 256-битный ключ (массив 32-битных частей).
  */
-void gost_decrypt(uint64_t *cipher, int len, const uint32_t *key);
+void gost_decrypt(void *cipher, size_t len, const void *key);
 
 #endif

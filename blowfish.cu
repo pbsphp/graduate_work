@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "blowfish.h"
 #include "config.h"
 
 
@@ -332,7 +333,7 @@ static void map_blowfish(
  * encr_or_decr - шифрование или дешифрование.
  */
 static void blowfish_run_device(
-    uint64_t *data, int len, struct blowfish_key *key, int encr_or_decr)
+    uint64_t *data, size_t len, struct blowfish_key *key, int encr_or_decr)
 {
     // Аллоцируем память для самих даных.
     uint64_t *data_dev = NULL;
@@ -365,15 +366,13 @@ static void blowfish_run_device(
  * Выполняет шифрование данных по алгоритму Blowfish.
  * data - массив исходных данных (64-битных),
  * len - длина исходных данных (количество 64-битных блоков),
- * user_key - пользовательский ключ,
- * key_len - длина ключа.
+ * user_key - пользовательский ключ.
  */
-void blowfish_encrypt(uint64_t *data, int len,
-                      const uint8_t *user_key, int key_len)
+void blowfish_encrypt(void *data, size_t len, const void *user_key)
 {
     struct blowfish_key key;
-    key_schedule(user_key, key_len, &key);
-    blowfish_run_device(data, len, &key, ENCRYPTION);
+    key_schedule((const uint8_t *) user_key, BLOWFISH_KEY_LEN, &key);
+    blowfish_run_device((uint64_t *) data, len, &key, ENCRYPTION);
 }
 
 
@@ -382,12 +381,10 @@ void blowfish_encrypt(uint64_t *data, int len,
  * cipher - массив шифротекста (64-битных блоков),
  * len - длина шифротекста (количество 64-битных блоков),
  * user_key - пользовательский ключ,
- * key_len - длина ключа.
  */
-void blowfish_decrypt(uint64_t *cipher, int len,
-                      const uint8_t *user_key, int key_len)
+void blowfish_decrypt(void *cipher, size_t len, const void *user_key)
 {
     struct blowfish_key key;
-    key_schedule(user_key, key_len, &key);
-    blowfish_run_device(cipher, len, &key, DECRYPTION);
+    key_schedule((const uint8_t *) user_key, BLOWFISH_KEY_LEN, &key);
+    blowfish_run_device((uint64_t *) cipher, len, &key, DECRYPTION);
 }

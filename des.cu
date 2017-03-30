@@ -499,11 +499,12 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
  * len - длина массива (количество блоков),
  * key - 64-битный ключ.
  */
-void des_encrypt(uint64_t *data, size_t len, uint64_t key)
+void des_encrypt(void *data, size_t len, const void *key)
 {
+    const uint64_t *key_ptr = (const uint64_t *) key;
     uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
-    make_rounds_keys(key, round_keys);
-    des_run_device(data, len, round_keys,
+    make_rounds_keys(*key_ptr, round_keys);
+    des_run_device((uint64_t *) data, len, round_keys,
                    ENCRYPTION, STRATEGY_SIMPLE_DES);
 }
 
@@ -514,11 +515,12 @@ void des_encrypt(uint64_t *data, size_t len, uint64_t key)
  * len - длина массива (количество блоков),
  * key - 64-битный ключ,
  */
-void des_decrypt(uint64_t *data, size_t len, uint64_t key)
+void des_decrypt(void *data, size_t len, const void *key)
 {
+    const uint64_t *key_ptr = (const uint64_t *) key;
     uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
-    make_rounds_keys(key, round_keys);
-    des_run_device(data, len, round_keys,
+    make_rounds_keys(*key_ptr, round_keys);
+    des_run_device((uint64_t *) data, len, round_keys,
                    DECRYPTION, STRATEGY_SIMPLE_DES);
 }
 
@@ -529,14 +531,15 @@ void des_decrypt(uint64_t *data, size_t len, uint64_t key)
  * len - длина массива (количество блоков),
  * keys - 3 64-битнх ключа,
  */
-void tdes_ede_encrypt(uint64_t *data, size_t len, const uint64_t *keys)
+void tdes_ede_encrypt(void *data, size_t len, const void *keys)
 {
+    const uint64_t *keys_ptr = (const uint64_t *) keys;
     uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
 
     for (int i = 0; i < 3; ++i) {
-        make_rounds_keys(keys[i], &round_keys[i * TOTAL_ROUNDS]);
+        make_rounds_keys(keys_ptr[i], &round_keys[i * TOTAL_ROUNDS]);
     }
-    des_run_device(data, len, round_keys,
+    des_run_device((uint64_t *) data, len, round_keys,
                    ENCRYPTION, STRATEGY_3DES_EDE);
 }
 
@@ -547,12 +550,13 @@ void tdes_ede_encrypt(uint64_t *data, size_t len, const uint64_t *keys)
  * len - длина массива (количество блоков),
  * keys - 3 64-битнх ключа,
  */
-void tdes_ede_decrypt(uint64_t *data, size_t len, const uint64_t *keys)
+void tdes_ede_decrypt(void *data, size_t len, const void *keys)
 {
+    const uint64_t *keys_ptr = (const uint64_t *) keys;
     uint64_t round_keys[3 * TOTAL_ROUNDS] = {0};
     for (int i = 0; i < 3; ++i) {
-        make_rounds_keys(keys[3 - i - 1], &round_keys[i * TOTAL_ROUNDS]);
+        make_rounds_keys(keys_ptr[3 - i - 1], &round_keys[i * TOTAL_ROUNDS]);
     }
-    des_run_device(data, len, round_keys,
+    des_run_device((uint64_t *) data, len, round_keys,
                    DECRYPTION, STRATEGY_3DES_EDE);
 }

@@ -10,7 +10,7 @@
  * len - количество блоков (4x4 байта),
  * key - ключ (128-бит, 16-байтный массив).
  */
-void aes_encrypt(uint8_t *data, int len, const uint8_t *key);
+void aes_encrypt(void *data, size_t len, const void *key);
 
 
 /**
@@ -19,6 +19,6 @@ void aes_encrypt(uint8_t *data, int len, const uint8_t *key);
  * len - количество блоков (4x4 байта),
  * key - ключ (128-бит, 16-байтный массив).
  */
-void aes_decrypt(uint8_t *cipher, int len, const uint8_t *key);
+void aes_decrypt(void *cipher, size_t len, const void *key);
 
 #endif

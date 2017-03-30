@@ -139,7 +139,7 @@ static void map_gost(uint64_t *data, int len, const uint32_t *key,
 /**
  * Запускает шифрование на девайсе
  */
-static void gost_run_device(uint64_t *data, int len, const uint32_t *key,
+static void gost_run_device(uint64_t *data, size_t len, const uint32_t *key,
                             int encr_or_decr)
 {
     uint64_t *data_dev = NULL;
@@ -171,9 +171,11 @@ static void gost_run_device(uint64_t *data, int len, const uint32_t *key,
  * len - количество 64-битных блоков,
  * key - 256-битный ключ (массив 32-битных частей).
  */
-void gost_encrypt(uint64_t *data, int len, const uint32_t *key)
+void gost_encrypt(void *data, size_t len, const void *key)
 {
-    gost_run_device(data, len, key, ENCRYPTION);
+    gost_run_device(
+        (uint64_t *) data, len, (const uint32_t *) key, ENCRYPTION
+    );
 }
 
 
@@ -183,7 +185,9 @@ void gost_encrypt(uint64_t *data, int len, const uint32_t *key)
  * len - количество 64-битных блоков,
  * key - 256-битный ключ (массив 32-битных частей).
  */
-void gost_decrypt(uint64_t *cipher, int len, const uint32_t *key)
+void gost_decrypt(void *cipher, size_t len, const void *key)
 {
-    gost_run_device(cipher, len, key, DECRYPTION);
+    gost_run_device(
+        (uint64_t *) cipher, len, (const uint32_t *) key, DECRYPTION
+    );
 }

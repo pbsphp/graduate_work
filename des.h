@@ -10,7 +10,7 @@
  * len - длина массива (количество блоков),
  * key - 64-битный ключ.
  */
-void des_encrypt(uint64_t *data, size_t len, uint64_t key);
+void des_encrypt(void *data, size_t len, const void *key);
 
 
 /**
@@ -19,7 +19,7 @@ void des_encrypt(uint64_t *data, size_t len, uint64_t key);
  * len - длина массива (количество блоков),
  * key - 64-битный ключ,
  */
-void des_decrypt(uint64_t *data, size_t len, uint64_t key);
+void des_decrypt(void *data, size_t len, const void *key);
 
 
 /**
@@ -28,7 +28,7 @@ void des_decrypt(uint64_t *data, size_t len, uint64_t key);
  * len - длина массива (количество блоков),
  * keys - 3 64-битнх ключа,
  */
-void tdes_ede_encrypt(uint64_t *data, size_t len, const uint64_t *keys);
+void tdes_ede_encrypt(void *data, size_t len, const void *keys);
 
 
 /**
@@ -37,6 +37,6 @@ void tdes_ede_encrypt(uint64_t *data, size_t len, const uint64_t *keys);
  * len - длина массива (количество блоков),
  * keys - 3 64-битнх ключа,
  */
-void tdes_ede_decrypt(uint64_t *data, size_t len, const uint64_t *keys);
+void tdes_ede_decrypt(void *data, size_t len, const void *keys);
 
 #endif
