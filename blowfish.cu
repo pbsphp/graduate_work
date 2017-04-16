@@ -326,16 +326,23 @@ static void blowfish_run_device(
 {
     // Аллоцируем память для самих даных.
     uint64_t *data_dev = NULL;
-    cudaHostGetDevicePointer(&data_dev, data, 0);
+
+    GPU_CHECK_ERROR(
+        cudaHostGetDevicePointer(&data_dev, data, 0)
+    );
 
     // Аллоцируем память для ключа
     struct blowfish_key *key_dev = NULL;
 
-    cudaMalloc((void **) &key_dev, sizeof(struct blowfish_key));
-    cudaMemcpy(
-        key_dev, key,
-        sizeof(struct blowfish_key),
-        cudaMemcpyHostToDevice
+    GPU_CHECK_ERROR(
+        cudaMalloc((void **) &key_dev, sizeof(struct blowfish_key))
+    );
+    GPU_CHECK_ERROR(
+        cudaMemcpy(
+            key_dev, key,
+            sizeof(struct blowfish_key),
+            cudaMemcpyHostToDevice
+        )
     );
 
     // Запускаем обработку на девайсе
@@ -345,9 +352,14 @@ static void blowfish_run_device(
     map_blowfish<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
         data_dev, len, key_dev, encr_or_decr, device_loops
     );
+    GPU_CHECK_ERROR_STATE();
 
-    cudaFree(key_dev);
-    cudaThreadSynchronize();
+    GPU_CHECK_ERROR(
+        cudaFree(key_dev)
+    );
+    GPU_CHECK_ERROR(
+        cudaThreadSynchronize()
+    );
 }
 
 

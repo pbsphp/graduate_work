@@ -63,4 +63,28 @@ static inline unsigned get_bit(uint64_t number, int n, int total_bits)
 }
 
 
+/**
+ * Макрос для проверки корректного выполнения функции.
+ * Показывает фатальную ошибку, файл и строку, если аргумент не cudaSucces.
+ */
+#define GPU_CHECK_ERROR(ans) { gpu_assert((ans), __FILE__, __LINE__); }
+inline void gpu_assert(cudaError_t code, const char *file, int line)
+{
+    if (code != cudaSuccess) {
+        printf("Fatal device error: %s %s %d\n", cudaGetErrorString(code), file, line);
+        exit(code);
+    }
+}
+
+
+/**
+ * Проверка текущего состояния ошибки.
+ * Если getCudaLastError() вернул ошибку, падаем.
+ */
+inline void GPU_CHECK_ERROR_STATE()
+{
+    GPU_CHECK_ERROR(cudaGetLastError());
+}
+
+
 #endif

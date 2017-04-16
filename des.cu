@@ -450,16 +450,25 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
                            int encr_or_decr, int strategy)
 {
     uint64_t *data_dev = NULL;
-    cudaHostGetDevicePointer(&data_dev, data, 0);
+    GPU_CHECK_ERROR(
+        cudaHostGetDevicePointer(&data_dev, data, 0)
+    );
 
     // Аллоцируем память для ключей раундов
     uint64_t *round_keys_dev = NULL;
     // TODO: Выделять константную память!
-    cudaMalloc((void **) &round_keys_dev, 3 * TOTAL_ROUNDS * sizeof(uint64_t));
-    cudaMemcpy(
-        round_keys_dev, round_keys,
-        3 * TOTAL_ROUNDS * sizeof(uint64_t),
-        cudaMemcpyHostToDevice
+    GPU_CHECK_ERROR(
+        cudaMalloc(
+            (void **) &round_keys_dev,
+            3 * TOTAL_ROUNDS * sizeof(uint64_t)
+        )
+    );
+    GPU_CHECK_ERROR(
+        cudaMemcpy(
+            round_keys_dev, round_keys,
+            3 * TOTAL_ROUNDS * sizeof(uint64_t),
+            cudaMemcpyHostToDevice
+        )
     );
 
     // Запускаем обработку на девайсе
@@ -475,9 +484,14 @@ static void des_run_device(uint64_t *data, size_t len, uint64_t *round_keys,
             data_dev, len, round_keys_dev, encr_or_decr, device_loops
         );
     }
+    GPU_CHECK_ERROR_STATE();
 
-    cudaFree(round_keys_dev);
-    cudaThreadSynchronize();
+    GPU_CHECK_ERROR(
+        cudaFree(round_keys_dev)
+    );
+    GPU_CHECK_ERROR(
+        cudaThreadSynchronize()
+    );
 }
 
 

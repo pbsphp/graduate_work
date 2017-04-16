@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #include "config.h"
+#include "helpers.h"
 
 
 #define ENCRYPTION 1
@@ -143,13 +144,19 @@ static void gost_run_device(uint64_t *data, size_t len, const uint32_t *key,
                             int encr_or_decr)
 {
     uint64_t *data_dev = NULL;
-    cudaHostGetDevicePointer(&data_dev, data, 0);
+    GPU_CHECK_ERROR(
+        cudaHostGetDevicePointer(&data_dev, data, 0)
+    );
 
     uint64_t *key_dev;
-    cudaMalloc((void **) &key_dev, sizeof(uint32_t) * 8);
-    cudaMemcpy(
-        key_dev, key, sizeof(uint32_t) * 8,
-        cudaMemcpyHostToDevice
+    GPU_CHECK_ERROR(
+        cudaMalloc((void **) &key_dev, sizeof(uint32_t) * 8)
+    );
+    GPU_CHECK_ERROR(
+        cudaMemcpy(
+            key_dev, key, sizeof(uint32_t) * 8,
+            cudaMemcpyHostToDevice
+        )
     );
 
     // Запускаем обработку на девайсе
@@ -159,9 +166,14 @@ static void gost_run_device(uint64_t *data, size_t len, const uint32_t *key,
     map_gost<<<BLOCKS_PER_GRID, THREADS_PER_BLOCK>>>(
         data_dev, len, (const uint32_t *) key_dev, encr_or_decr, device_loops
     );
+    GPU_CHECK_ERROR_STATE();
 
-    cudaFree(key_dev);
-    cudaThreadSynchronize();
+    GPU_CHECK_ERROR(
+        cudaFree(key_dev)
+    );
+    GPU_CHECK_ERROR(
+        cudaThreadSynchronize()
+    );
 }
 
 

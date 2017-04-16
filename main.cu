@@ -33,16 +33,21 @@ void encrypt_file(
     void *keys, size_t align)
 {
     unsigned char *buffer = NULL;
-    cudaHostAlloc(
-        (void **) &buffer, WORK_MEM_SIZE,
-        cudaHostAllocWriteCombined | cudaHostAllocMapped
+    GPU_CHECK_ERROR(
+        cudaHostAlloc(
+            (void **) &buffer, WORK_MEM_SIZE,
+            cudaHostAllocWriteCombined | cudaHostAllocMapped
+        )
     );
 
     FILE *f_in = fopen(in_fname, "rb");
     FILE *f_out = fopen(out_fname, "wb");
-
-    if (f_in == NULL || f_out == NULL) {
-        printf("IO error!\n");
+    if (f_in == NULL) {
+        printf("%s: No such file!\n", in_fname);
+        exit(EXIT_FAILURE);
+    }
+    if (f_out == NULL) {
+        printf("%s: Cannot open output file!\n", out_fname);
         exit(EXIT_FAILURE);
     }
 
@@ -75,7 +80,9 @@ void encrypt_file(
     fclose(f_in);
     fclose(f_out);
 
-    cudaFreeHost(buffer);
+    GPU_CHECK_ERROR(
+        cudaFreeHost(buffer)
+    );
 }
 
 
@@ -97,16 +104,21 @@ void decrypt_file(
     void *keys, size_t align)
 {
     unsigned char *buffer = NULL;
-    cudaHostAlloc(
-        (void **) &buffer, WORK_MEM_SIZE,
-        cudaHostAllocWriteCombined | cudaHostAllocMapped
+    GPU_CHECK_ERROR(
+        cudaHostAlloc(
+            (void **) &buffer, WORK_MEM_SIZE,
+            cudaHostAllocWriteCombined | cudaHostAllocMapped
+        )
     );
 
     FILE *f_in = fopen(in_fname, "rb");
     FILE *f_out = fopen(out_fname, "wb");
-
-    if (f_in == NULL || f_out == NULL) {
-        printf("IO error!\n");
+    if (f_in == NULL) {
+        printf("%s: No such file!\n", in_fname);
+        exit(EXIT_FAILURE);
+    }
+    if (f_out == NULL) {
+        printf("%s: Cannot open output file!\n", out_fname);
         exit(EXIT_FAILURE);
     }
 
@@ -142,7 +154,9 @@ void decrypt_file(
     fclose(f_in);
     fclose(f_out);
 
-    cudaFreeHost(buffer);
+    GPU_CHECK_ERROR(
+        cudaFreeHost(buffer)
+    );
 }
 
 

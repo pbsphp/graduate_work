@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "config.h"
+#include "helpers.h"
 
 
 #define STATE_SIZE 4
@@ -428,14 +429,20 @@ static void aes_run_device(
     int encr_or_decr)
 {
     uint8_t *data_dev = NULL;
-    cudaHostGetDevicePointer(&data_dev, data, 0);
+    GPU_CHECK_ERROR(
+        cudaHostGetDevicePointer(&data_dev, data, 0)
+    );
 
     uint8_t ***round_keys_dev = NULL;
-    cudaMalloc((void **) &round_keys_dev, sizeof(round_keys_dev));
-    cudaMemcpy(
-        round_keys_dev, round_keys,
-        sizeof(round_keys_dev),
-        cudaMemcpyHostToDevice
+    GPU_CHECK_ERROR(
+        cudaMalloc((void **) &round_keys_dev, sizeof(round_keys_dev))
+    );
+    GPU_CHECK_ERROR(
+        cudaMemcpy(
+            round_keys_dev, round_keys,
+            sizeof(round_keys_dev),
+            cudaMemcpyHostToDevice
+        )
     );
 
     // Запускаем обработку на девайсе
@@ -446,9 +453,14 @@ static void aes_run_device(
         data_dev, len, (uint8_t (*)[4][4]) round_keys_dev, encr_or_decr,
         device_loops
     );
+    GPU_CHECK_ERROR_STATE();
 
-    cudaFree(round_keys_dev);
-    cudaThreadSynchronize();
+    GPU_CHECK_ERROR(
+        cudaFree(round_keys_dev)
+    );
+    GPU_CHECK_ERROR(
+        cudaThreadSynchronize()
+    );
 }
 
 
