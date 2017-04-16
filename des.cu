@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "config.h"
+#include "helpers.h"
 
 
 #define ENCRYPTION 1
@@ -135,20 +136,6 @@ static const int KEY_FINAL_TRANSFORMS[48] = {
     44, 49, 39, 56, 34, 53,
     46, 42, 50, 36, 29, 32
 };
-
-
-/**
- * Возвращает n бит из слова number.
- * number - число,
- * n - номер бита (слева, начиная с 0)
- * total_bits - сколько всего бит в числе (например 48).
- */
-__host__ __device__
-static inline unsigned get_bit(uint64_t number, int n, int total_bits)
-{
-    int n_left = total_bits - n - 1;
-    return (number >> n_left) & 1;
-}
 
 
 /**
@@ -404,7 +391,8 @@ static void map_des(uint64_t *all_data, int len, uint64_t *round_keys,
         int offset = THREADS_PER_BLOCK * BLOCKS_PER_GRID * iteration;
         int idx = offset + worker_idx;
         if (idx < len) {
-            all_data[idx] = des_process_block(all_data[idx], round_keys, encr_or_decr);
+            all_data[idx] = des_process_block(
+                all_data[idx], round_keys, encr_or_decr);
         }
     }
 }

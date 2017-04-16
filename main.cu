@@ -8,36 +8,11 @@
 #include "gost.h"
 
 #include "config.h"
+#include "helpers.h"
 
 
 #define ENCRYPTION 1
 #define DECRYPTION 2
-
-
-/**
- * Округляет число в большую сторону до кратности base.
- *
- * Например:
- * round_up_to_base(30, 8) = 32,
- * round_up_to_base(1234, 100) = 1300
- */
-int round_up_to_base(int num, int base)
-{
-    return base * ((num + base - 1) / base);
-}
-
-
-/**
- * Возвращает размер файла
- */
-long get_file_size(FILE *f)
-{
-    long curr_pos = ftell(f);
-    fseek(f, 0, SEEK_END);
-    long fsize = ftell(f);
-    fseek(f, curr_pos, SEEK_SET);
-    return fsize;
-}
 
 
 /**

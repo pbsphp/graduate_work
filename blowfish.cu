@@ -3,6 +3,7 @@
 
 #include "blowfish.h"
 #include "config.h"
+#include "helpers.h"
 
 
 #define ENCRYPTION 1
@@ -164,18 +165,6 @@ static const uint32_t S_PERM[4][256] = {{
 
 
 /**
- * Меняет операнды местами.
- */
-__device__ __host__
-static inline void swap(uint32_t *a, uint32_t *b)
-{
-    uint32_t tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
-
-/**
  * Раундовая функция blowfish в сети Фейстеля
  */
 __device__ __host__
@@ -223,9 +212,9 @@ static uint64_t blowfish_encrypt_block(
 
     for (int round_num = 0; round_num < 16; ++round_num) {
         iteration(&left, &right, round_num, key);
-        swap(&left, &right);
+        swap32(&left, &right);
     }
-    swap(&left, &right);
+    swap32(&left, &right);
     right ^= key->p[16];
     left ^= key->p[17];
 
@@ -249,9 +238,9 @@ static uint64_t blowfish_decrypt_block(
 
     for (int round_num = 17; round_num >= 2; --round_num) {
         iteration(&left, &right, round_num, key);
-        swap(&left, &right);
+        swap32(&left, &right);
     }
-    swap(&left, &right);
+    swap32(&left, &right);
     right ^= key->p[1];
     left ^= key->p[0];
 
