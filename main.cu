@@ -51,26 +51,14 @@ void encrypt_file(
         exit(EXIT_FAILURE);
     }
 
-    // Первые 8 байт зашифрованного файла - его длина (big endian).
-    uint64_t file_size = (uint64_t) get_file_size(f_in);
-
-    unsigned char file_size_be[8] = {0};
-    for (int i = 0; i < 8; ++i) {
-        file_size_be[7 - i] = file_size & 0xFF;
-        file_size >>= 8;
-    }
-
-    fwrite(file_size_be, 1, 8, f_out);
-
     size_t bytes_read = 0;
     while ((bytes_read = fread(buffer, 1, WORK_MEM_SIZE, f_in)) != 0) {
-
         // Передаваемая обработчику инфа должна быть кратной align.
         size_t aligned_size = round_up_to_base(bytes_read, align);
 
-        // Остальное заполняем нулями
+        // Остальное заполняем padding`ом.
         for (size_t i = bytes_read; i < aligned_size; ++i) {
-            buffer[i] = 0;
+            buffer[i] = aligned_size - bytes_read;
         }
 
         function((void *) buffer, aligned_size / align, keys);
@@ -122,33 +110,31 @@ void decrypt_file(
         exit(EXIT_FAILURE);
     }
 
-    // Первые 8 байт зашифрованного файла - его длина (big endian).
-    unsigned char file_size_be[8] = {0};
-    fread(file_size_be, 1, 8, f_in);
-    uint64_t expected_write = 0;
-    for (int i = 0; i < 8; ++i) {
-        expected_write <<= 8;
-        expected_write |= file_size_be[i];
-    }
+    size_t expected_read = get_file_size(f_in);
 
     size_t bytes_read = 0;
     while ((bytes_read = fread(buffer, 1, WORK_MEM_SIZE, f_in)) != 0) {
+        expected_read -= bytes_read;
 
-        // Передаваемая обработчику инфа должна быть кратной align.
-        size_t aligned_size = round_up_to_base(bytes_read, align);
-
-        // Остальное заполняем нулями
-        for (size_t i = bytes_read; i < aligned_size; ++i) {
-            buffer[i] = 0;
+        // Передаваемая обработчику инфа должна быть кратной рамеру блока.
+        if (bytes_read != round_up_to_base(bytes_read, align)) {
+            printf(
+                "Ciphertext is corrupted! File size does not match to block size (%ld bytes).\n",
+                align
+            );
+            exit(1);
         }
 
-        size_t write_bytes = (
-            (bytes_read < expected_write) ? bytes_read : expected_write);
+        function((void *) buffer, bytes_read / align, keys);
 
-        function((void *) buffer, aligned_size / align, keys);
-        fwrite(buffer, 1, write_bytes, f_out);
+        // Если был прочитан последний блок, необходимо убрать из него padding.
+        size_t real_part_size = bytes_read;
+        if (expected_read <= 0) {
+            int padding = buffer[bytes_read - 1];
+            real_part_size = bytes_read - padding;
+        }
 
-        expected_write -= bytes_read;
+        fwrite(buffer, 1, real_part_size, f_out);
     }
 
     fclose(f_in);
