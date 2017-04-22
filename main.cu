@@ -14,6 +14,12 @@
 #define ENCRYPTION 1
 #define DECRYPTION 2
 
+#define ALG_DES 1
+#define ALG_TDES 2
+#define ALG_AES 3
+#define ALG_BLOWFISH 4
+#define ALG_GOST 5
+
 
 /**
  * Шифрует файл.
@@ -146,101 +152,178 @@ void decrypt_file(
 }
 
 
-int main()
+/**
+ * Считывает ключ из файла
+ * fname - путь к файлу,
+ * buffer - буфер для ключа,
+ * length - предполагаемая длина ключа.
+ */
+void read_key_file(const char *fname, char *buffer, int length)
 {
-    const uint32_t gost_key[8] = {
-        0xDEADBEEF, 0xDEADC0FE, 0xDEFECA7E, 0xABCD1234,
-        0xAABBCCDD, 0x01742319, 0xDADADEDE, 0xCACE1000
-    };
+    FILE *key_file = fopen(fname, "rb");
+    if (key_file == NULL) {
+        printf("%s: no such file!\n", fname);
+        exit(1);
+    }
 
-    const uint64_t des_key = 0xDEADFACEDEADFACE;
+    int bytes_read = fread(buffer, 1, length, key_file);
+    fclose(key_file);
+    if (bytes_read != length) {
+        printf(
+            "Invalid key file. Expected %d bytes, got %d.\n",
+            length, bytes_read
+        );
+        exit(1);
+    }
+}
 
-    const uint64_t tdes_keys[3] = {
-        0x12345678ABCDEF00, 0xDEADFACEDEADFACE, 0xDEADBEEFDEADBEEF
-    };
 
-    const uint8_t aes_key[16] = {
-        0x0f, 0x15, 0x71, 0xc9,
-        0x47, 0xd9, 0xe8, 0x59,
-        0x0c, 0xb7, 0xad, 0xd6,
-        0xaf, 0x7f, 0x67, 0x98
-    };
+int main(int argc, char *argv[])
+{
+    if (argc != 6) {
+        printf(
+            "Usage: %s <d|e> <des|tdes|aes|blowfish|gost> <keyfile> <in> <out>\n",
+            argv[0]
+        );
+        exit(1);
+    }
 
-    const uint8_t blowfish_key[] = {
-        0xDE, 0xAD, 0xBE, 0xEF, 0xAB, 0xCD, 0xEF, 0x11
-    };
+    int algorithm = 0;
+    if (strcmp(argv[2], "des") == 0) {
+        algorithm = ALG_DES;
+    } else if (strcmp(argv[2], "tdes") == 0) {
+        algorithm = ALG_TDES;
+    } else if (strcmp(argv[2], "aes") == 0) {
+        algorithm = ALG_AES;
+    } else if (strcmp(argv[2], "blowfish") == 0) {
+        algorithm = ALG_BLOWFISH;
+    } else if (strcmp(argv[2], "gost") == 0) {
+        algorithm = ALG_GOST;
+    } else {
+        printf("Invalid `alg' option. Not supported\n");
+        exit(1);
+    }
 
-    encrypt_file(
-        des_encrypt,
-        "/tmp/in.txt", "/tmp/.cipher",
-        (void *) &des_key,
-        sizeof(uint64_t)
-    );
+    int key_len = 0;
+    switch (algorithm) {
+    case ALG_DES:
+        key_len = 8;
+        break;
+    case ALG_TDES:
+        key_len = 3 * 8;
+        break;
+    case ALG_AES:
+        key_len = 16;
+        break;
+    case ALG_BLOWFISH:
+        key_len = 8;
+        break;
+    case ALG_GOST:
+        key_len = 4 * 8;
+        break;
+    default:
+        printf(
+            "Internal error! Key length for this algorithm is not defined!\n"
+        );
+        exit(1);
+    }
 
-    decrypt_file(
-        des_decrypt,
-        "/tmp/.cipher", "/tmp/des.txt",
-        (void *) &des_key,
-        sizeof(uint64_t)
-    );
+    char key_buffer[100];
+    read_key_file(argv[3], key_buffer, key_len);
 
-    encrypt_file(
-        tdes_ede_encrypt,
-        "/tmp/in.txt", "/tmp/.cipher",
-        (void *) tdes_keys,
-        sizeof(uint64_t)
-    );
+    const char *in_file = argv[4];
+    const char *out_file = argv[5];
 
-    decrypt_file(
-        tdes_ede_decrypt,
-        "/tmp/.cipher", "/tmp/tdes.txt",
-        (void *) tdes_keys,
-        sizeof(uint64_t)
-    );
-
-    encrypt_file(
-        aes_encrypt,
-        "/tmp/in.txt", "/tmp/out.txt",
-        (void *) aes_key,
-        16
-    );
-
-    decrypt_file(
-        aes_decrypt,
-        "/tmp/out.txt", "/tmp/aes.txt",
-        (void *) aes_key,
-        16
-    );
-
-    encrypt_file(
-        blowfish_encrypt,
-        "/tmp/in.txt", "/tmp/.cipher",
-        (void *) blowfish_key,
-        sizeof(uint64_t)
-    );
-
-    decrypt_file(
-        blowfish_decrypt,
-        "/tmp/.cipher", "/tmp/blowfish.txt",
-        (void *) blowfish_key,
-        sizeof(uint64_t)
-    );
-
-    encrypt_file(
-        gost_encrypt,
-        "/tmp/in.txt", "/tmp/.cipher",
-        (void *) gost_key,
-        sizeof(uint64_t)
-    );
-
-    decrypt_file(
-        gost_decrypt,
-        "/tmp/.cipher", "/tmp/gost.txt",
-        (void *) gost_key,
-        sizeof(uint64_t)
-    );
-
-    printf("%d\n", cudaGetLastError());
+    if (strcmp(argv[1], "e") == 0) {
+        switch (algorithm) {
+        case ALG_DES:
+            encrypt_file(
+                des_encrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_TDES:
+            encrypt_file(
+                tdes_ede_encrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_AES:
+            encrypt_file(
+                aes_encrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                16
+            );
+            break;
+        case ALG_BLOWFISH:
+            encrypt_file(
+                blowfish_encrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_GOST:
+            encrypt_file(
+                gost_encrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        }
+    } else if (strcmp(argv[1], "d") == 0) {
+        switch (algorithm) {
+        case ALG_DES:
+            decrypt_file(
+                des_decrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_TDES:
+            decrypt_file(
+                tdes_ede_decrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_AES:
+            decrypt_file(
+                aes_decrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                16
+            );
+            break;
+        case ALG_BLOWFISH:
+            decrypt_file(
+                blowfish_decrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        case ALG_GOST:
+            decrypt_file(
+                gost_decrypt,
+                in_file, out_file,
+                (void *) key_buffer,
+                sizeof(uint64_t)
+            );
+            break;
+        }
+    } else {
+        printf("Encrypt or decrypt? See usage.\n");
+        exit(1);
+    }
 
     return 0;
 }
