@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
 
 #include "des.h"
 #include "aes.h"
@@ -57,18 +59,36 @@ void encrypt_file(
         exit(EXIT_FAILURE);
     }
 
+    // Флаг того, что файл был дополнен.
+    bool has_padding = false;
+
     size_t bytes_read = 0;
     while ((bytes_read = fread(buffer, 1, WORK_MEM_SIZE, f_in)) != 0) {
         // Передаваемая обработчику инфа должна быть кратной align.
         size_t aligned_size = round_up_to_base(bytes_read, align);
 
-        // Остальное заполняем padding`ом.
-        for (size_t i = bytes_read; i < aligned_size; ++i) {
-            buffer[i] = aligned_size - bytes_read;
+        // Дополняем padding'ом (PKCS7)
+        if (bytes_read < aligned_size) {
+            for (size_t i = bytes_read; i < aligned_size; ++i) {
+                buffer[i] = aligned_size - bytes_read;
+            }
+            has_padding = true;
         }
 
         function((void *) buffer, aligned_size / align, keys);
         fwrite(buffer, 1, aligned_size, f_out);
+    }
+
+    // Если в процессе обработки не было добавлено дополнение
+    // (например размер файла кратен блоку или даже WORK_MEM_SIZE)
+    // все равно его добавляем.
+    if (!has_padding) {
+        for (size_t i = 0; i < align; ++i) {
+            buffer[i] = align;
+        }
+
+        function((void *) buffer, align / align, keys);
+        fwrite(buffer, 1, align, f_out);
     }
 
     fclose(f_in);
